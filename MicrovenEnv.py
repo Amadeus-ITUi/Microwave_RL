@@ -52,7 +52,7 @@ class MicrowaveEnv:
             os.makedirs(self.record_dir, exist_ok=True)
         
         # return self.temperature
-        return self.border_quantize(levels=16, method='linear').astype(np.float32)
+        return np.array(self.temperature, dtype=np.float32).reshape(self.nrow, self.ncol)
 
     def step(self, action):
         if self.actions is None:
@@ -67,11 +67,11 @@ class MicrowaveEnv:
         if self.episoide_count % 50 == 0 and self.step_count % 20 == 0:
             self.render()
         # 用平均绝对偏差系数 (mean absolute deviation / mean) 作为标准化不一致性度量
-        reward = -self.border_mad_coeff()
+        reward = -self.full_grid_cv()
         done = (self.step_count >= 200)
         self.last_action = a
         self.last_reward = float(reward)
-        return self.border_quantize(levels=16, method='linear').astype(np.float32), float(reward), bool(done), {}
+        return np.array(self.temperature, dtype=np.float32).reshape(self.nrow, self.ncol), float(reward), bool(done), {}
         
     def render(self):
         T = np.array(self.temperature, dtype=float).reshape((self.nrow, self.ncol))
@@ -104,10 +104,8 @@ class MicrowaveEnv:
         for c in range(self.ncol - 2, 0, -1):
             vals.append(float(T[0, c]))
         return vals
-
     def border_array(self):
         return np.asarray(self.border_list(), dtype=float)
-
     def border_variance(self, ddof=0):
         arr = self.border_array()
         if arr.size == 0:
@@ -122,7 +120,6 @@ class MicrowaveEnv:
             return float('nan')
         std = float(np.std(arr, ddof=ddof))
         return std / mean
-
     def border_mad_coeff(self):
         arr = self.border_array()
         if arr.size == 0:
@@ -131,8 +128,7 @@ class MicrowaveEnv:
         if mean == 0.0:
             return float('nan')
         mad = float(np.mean(np.abs(arr - mean)))
-        return mad / abs(mean)
-    
+        return mad / abs(mean)    
     def border_quantize(self, levels=16, method='linear'):
         arr = self.border_array()
         if arr.size == 0:
@@ -166,6 +162,16 @@ class MicrowaveEnv:
                 mapped[labels == cls] = rank
             return mapped.astype(int)
         raise ValueError("unknown method: " + str(method))
+
+    def full_grid_cv(self): # (Coefficient of Variation, CV)变异系数
+        T_arr = np.array(self.temperature, dtype=float) 
+        if T_arr.size == 0:
+            return float('nan')
+        mean = float(np.mean(T_arr))
+        if mean == 0.0: 
+            return 0.0 
+        std = float(np.std(T_arr, ddof=0))
+        return std / abs(mean)
 
 if __name__ == "__main__":
     env = MicrowaveEnv(8, 8, actions_path='data_process/NewDivideResult/8x8/aggregated_8x8.npz')
